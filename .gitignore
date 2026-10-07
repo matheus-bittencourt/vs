@@ -8,5 +8,11 @@ __pycache__/
 .env
 .env.*
 !.env.example
+.envrc
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
 .DS_Store
 Thumbs.db
