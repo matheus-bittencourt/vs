@@ -20,7 +20,8 @@ pessoais a partir do voto. O projeto não é um canal oficial de candidatura ou 
   preparado para um Story do Instagram. A imagem inclui os oito indicadores do
   painel, mostra N/D quando não há dados e mantém notas metodológicas. A fonte
   Roboto é instalada pelas dependências do projeto para preservar acentos,
-  cedilha e hífens também em ambientes de hospedagem sem fontes do sistema.
+  cedilha e hífens também em ambientes de hospedagem sem fontes do sistema. Um
+  checkbox permite incluir atribuições resumidas das fontes dos dados na imagem.
 
 Os dados econômicos incorporados são aproximados e arredondados para exploração,
 não projeções oficiais. Programas de transferência de renda, séries e metodologias

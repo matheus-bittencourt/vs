@@ -39,6 +39,36 @@ class StoryExportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "oito indicadores"):
             criar_imagem_story("Período A", "Período B", [])
 
+    def test_opcao_de_fontes_muda_imagem_exportada(self):
+        indicadores = [
+            ("Indicador", "1", "2"),
+        ] * 8
+
+        sem_fontes = Image.open(
+            BytesIO(
+                criar_imagem_story(
+                    "Período A",
+                    "Período B",
+                    indicadores,
+                )
+            )
+        )
+        com_fontes = Image.open(
+            BytesIO(
+                criar_imagem_story(
+                    "Período A",
+                    "Período B",
+                    indicadores,
+                    incluir_fontes=True,
+                )
+            )
+        )
+
+        self.assertNotEqual(
+            sem_fontes.tobytes(),
+            com_fontes.tobytes(),
+        )
+
     def test_fonte_tem_glifos_para_diacriticos_e_hifens(self):
         for negrito in (False, True):
             fonte = _fonte(24, negrito=negrito)

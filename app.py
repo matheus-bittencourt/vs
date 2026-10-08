@@ -744,10 +744,19 @@ if modo == "Comparar dois períodos":
                 formatar_grupo(segundo, "resultado_primario_pct_pib", 2, "%"),
             ),
         ]
+        incluir_fontes_story = st.checkbox(
+            "Incluir fontes dos dados na imagem",
+            value=False,
+            help=(
+                "Acrescenta a atribuição resumida de IBGE, Banco Central e MDS "
+                "ao rodapé do PNG."
+            ),
+        )
         imagem_story = criar_imagem_story(
             periodos_para_metricas[0],
             periodos_para_metricas[1],
             indicadores_story,
+            incluir_fontes=incluir_fontes_story,
         )
         st.download_button(
             "Baixar comparativo para Instagram Stories (PNG)",

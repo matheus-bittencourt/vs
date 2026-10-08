@@ -157,6 +157,7 @@ def criar_imagem_story(
     periodo_a: str,
     periodo_b: str,
     indicadores: list[tuple[str, str, str]],
+    incluir_fontes: bool = False,
 ) -> bytes:
     """Renderiza as métricas comparativas como PNG vertical de 1080 × 1920."""
     if len(indicadores) != 8:
@@ -279,6 +280,19 @@ def criar_imagem_story(
             espacamento=5,
         )
         y_rodape += 9
+
+    if incluir_fontes:
+        _texto_ajustado(
+            desenho,
+            (margem, y_rodape + 5),
+            "Fontes dos dados: IBGE (PIB, IPCA, PNAD e rendimento); Banco Central "
+            "(IED e resultado primário); MDS (transferências). Base aproximada e "
+            "arredondada; veja a metodologia no painel.",
+            fonte_rodape,
+            STORY_WIDTH - 2 * margem,
+            _SECUNDARIO,
+            espacamento=5,
+        )
 
     buffer = BytesIO()
     imagem.save(buffer, format="PNG", optimize=True)
