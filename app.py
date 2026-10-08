@@ -1078,6 +1078,7 @@ if not votos.empty:
     )
     votos["tema_perfil"] = [leitura[0] for leitura in leituras]
     votos["leitura_voto"] = [leitura[1] for leitura in leituras]
+    votos["posicao_item"] = [leitura[2] for leitura in leituras]
 
 if votos.empty:
     st.info(
@@ -1159,27 +1160,27 @@ else:
         )
         st.plotly_chart(fig_votos, width="stretch")
 
-    with st.expander("Experimento: perfil de posicionamento pelos votos", expanded=True):
+    with st.expander("Relatório de análise política dos votos", expanded=True):
         st.markdown(
-            "Esta leitura combina **o sentido do voto e a descrição oficial do item "
-            "submetido à votação**. Ela não atribui motivação pessoal nem interpreta "
-            "contextos externos ao registro. Quando a descrição não permite saber qual "
-            "mudança concreta estava em votação, isso fica indicado no texto."
+            "Este relatório combina **o sentido do voto nominal com a medida descrita "
+            "para o item votado**. Quando o registro diz, por exemplo, “redução da "
+            "maioridade penal”, Sim é classificado como favorável à redução e Não como "
+            "contrário a ela. A classificação descreve a posição sobre a medida "
+            "registrada; não atribui motivos pessoais nem presume efeitos reais."
         )
         st.caption(
-            "“Sim” e “Não” reproduzem o voto nominal, mas não são convertidos "
-            "automaticamente em apoio ou oposição à proposta inteira. Em emendas, destaques "
-            "e votações procedimentais, o item pode ser diferente do texto principal. "
-            "Abstenção, obstrução, votação secreta e ausência não são convertidas em "
-            "posicionamento."
+            "A posição favorável ou contrária só é atribuída quando o texto disponível "
+            "explicita a direção de uma medida. Em emendas, destaques e votações "
+            "procedimentais, o item votado pode diferir da proposta principal; quando a "
+            "fonte não identifica esse item, a leitura informa essa limitação. Abstenção, "
+            "obstrução e ausência não são convertidas em posicionamento."
         )
         registros_do_perfil = votos_filtrados.copy()
         votos_para_perfil = registros_do_perfil[
             registros_do_perfil["participacao"].eq("Votou")
         ].copy()
         votos_classificados = votos_para_perfil[
-            ~votos_para_perfil["tema_perfil"].eq("Tema sem regra específica")
-            & ~votos_para_perfil["tema_perfil"].eq("Não classificado")
+            votos_para_perfil["posicao_item"].isin({"Favorável", "Contrário"})
         ]
         perfil_metricas = st.columns(3)
         perfil_metricas[0].metric("Registros de votação no filtro", len(registros_do_perfil))
@@ -1187,20 +1188,20 @@ else:
             "Votos nominais individuais", len(votos_para_perfil)
         )
         perfil_metricas[2].metric(
-            "Itens com tema identificado",
+            "Itens com posição identificada",
             len(votos_classificados),
         )
 
         if votos_classificados.empty:
             st.info(
-                "Não há, neste filtro, propostas que correspondam às regras temáticas "
-                "específicas. Os votos nominais ainda aparecem abaixo com a descrição "
-                "da matéria."
+                "Não há, neste filtro, itens cuja descrição permita identificar a "
+                "direção da medida e relacioná-la ao voto Sim/Não. Os registros e suas "
+                "descrições continuam disponíveis abaixo."
             )
         else:
             contagem_perfil = (
                 votos_classificados.groupby(
-                    ["agente", "tema_perfil", "voto"], as_index=False
+                    ["agente", "tema_perfil", "posicao_item"], as_index=False
                 )
                 .size()
                 .rename(columns={"size": "votos"})
@@ -1209,27 +1210,30 @@ else:
                 contagem_perfil,
                 x="tema_perfil",
                 y="votos",
-                color="voto",
+                color="posicao_item",
                 facet_col="agente",
                 barmode="group",
                 text="votos",
-                title="Posicionamentos registrados por tema",
+                title="Posicionamentos em relação às medidas descritas",
                 labels={
-                    "tema_perfil": "Tema identificado no texto",
+                    "tema_perfil": "Medida identificada no texto",
                     "votos": "Quantidade de votos",
-                    "voto": "Sentido do voto",
+                    "posicao_item": "Posição sobre a medida",
                     "agente": "Parlamentar",
                 },
-                color_discrete_map={"Sim": "#218739", "Não": "#B42332"},
+                color_discrete_map={
+                    "Favorável": "#218739",
+                    "Contrário": "#B42332",
+                },
             )
-            fig_perfil.update_layout(legend_title="Voto")
+            fig_perfil.update_layout(legend_title="Posição sobre a medida")
             st.plotly_chart(fig_perfil, width="stretch")
 
         st.markdown("#### Leitura de todos os registros do filtro")
         st.caption(
-            "A descrição do item é mantida separada da ementa geral da proposta. Quando "
-            "a fonte não detalha o efeito de uma emenda, destaque ou procedimento, o painel "
-            "não presume se o voto aumentaria, reduziria ou manteria uma regra."
+            "A coluna de posição relaciona Sim/Não à direção expressamente descrita no "
+            "item. Se o registro disponível trouxer apenas o assunto, sem dizer se a "
+            "medida aumenta, reduz, cria ou altera algo, a posição fica sem classificação."
         )
         st.dataframe(
             registros_do_perfil[
@@ -1238,6 +1242,7 @@ else:
                     "data",
                     "proposicao",
                     "tema_perfil",
+                    "posicao_item",
                     "participacao",
                     "voto",
                     "leitura_voto",
@@ -1250,9 +1255,10 @@ else:
             width="stretch",
             column_config={
                 "data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-                "tema_perfil": st.column_config.TextColumn("Tema identificado"),
+                "tema_perfil": st.column_config.TextColumn("Medida identificada"),
+                "posicao_item": st.column_config.TextColumn("Posição sobre a medida"),
                 "leitura_voto": st.column_config.TextColumn(
-                    "Posição registrada e conteúdo da matéria",
+                    "Análise do voto e da medida",
                     width="large",
                 ),
                 "descricao_votacao": st.column_config.TextColumn(
@@ -1312,8 +1318,9 @@ st.markdown(
     "[Senado — matérias e tramitação](https://www25.senado.leg.br/web/atividade/materias)."
 )
 st.caption(
-    "A coluna explica em linguagem simples o que o texto prevê caso seja aprovado; "
-    "não afirma qual será o efeito real nem por que o parlamentar votou assim. "
+    "A análise relaciona o voto nominal à direção da medida descrita no item, quando "
+    "ela está explícita; não atribui motivação pessoal nem afirma qual será o efeito "
+    "real da medida. "
     "A ementa oficial permanece disponível para conferência. "
     "Registre o sentido do voto nominal conforme "
     "o painel oficial e inclua o link direto à sessão ou votação sempre que possível. "

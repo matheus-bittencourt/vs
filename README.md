@@ -11,9 +11,11 @@ pessoais a partir do voto. O projeto não é um canal oficial de candidatura ou 
 - Exemplos de propostas e seus status legislativos, com links para fontes públicas.
 - Votações nominais de Flávio Bolsonaro consultadas na API oficial do Senado, além
   de suporte opcional a CSV documentado na própria aplicação.
-- Leitura em linguagem simples que distingue o voto registrado da descrição do item
-  votado. Quando a fonte não informa o efeito específico, o painel explicita essa
-  limitação em vez de inferi-lo.
+- Relatório que relaciona o voto Sim/Não à direção expressamente descrita para a
+  medida votada: por exemplo, Sim em um item que propõe reduzir a maioridade penal
+  é classificado como favorável à redução. Abstenção, obstrução e ausência não são
+  convertidas em posicionamento; descrições sem uma medida concreta ficam sem
+  classificação.
 
 Os dados econômicos incorporados são aproximados e arredondados para exploração,
 não projeções oficiais. Programas de transferência de renda, séries e metodologias
