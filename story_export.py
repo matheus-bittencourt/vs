@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from io import BytesIO
 from pathlib import Path
+from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -17,26 +19,96 @@ _SECUNDARIO = "#475467"
 _VERMELHO = "#B42332"
 _AZUL = "#234E70"
 _BRANCO = "#FFFFFF"
+_CARACTERES_NECESSARIOS = "áéíóúâêôãõçÁÉÍÓÚÂÊÔÃÕÇ–—-"
 
 
-def _fonte(tamanho: int, negrito: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+@lru_cache(maxsize=2)
+def _caminhos_fontes(negrito: bool) -> tuple[Path, ...]:
     nomes = (
         (
             r"C:\Windows\Fonts\arialbd.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
         )
         if negrito
         else (
             r"C:\Windows\Fonts\arial.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
         )
     )
-    for nome in nomes:
-        if Path(nome).is_file():
-            return ImageFont.truetype(nome, tamanho)
-    return ImageFont.load_default(size=tamanho)
+    caminhos = [Path(nome) for nome in nomes]
+    raizes_fontes = (
+        Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts",
+        Path("/usr/share/fonts"),
+        Path("/usr/local/share/fonts"),
+        Path.home() / ".local" / "share" / "fonts",
+        Path.home() / ".fonts",
+        Path("/System/Library/Fonts"),
+        Path("/Library/Fonts"),
+    )
+    familias = ("arial", "dejavusans", "liberationsans", "notosans", "freesans")
+    fontes_encontradas = [
+        caminho
+        for raiz in raizes_fontes
+        if raiz.is_dir()
+        for caminho in raiz.rglob("*")
+        if caminho.suffix.lower() in {".ttf", ".otf"}
+        and any(familia in caminho.stem.lower().replace(" ", "") for familia in familias)
+    ]
+    caminhos.extend(
+        sorted(
+            fontes_encontradas,
+            key=lambda caminho: (
+                familias.index(
+                    next(
+                        familia
+                        for familia in familias
+                        if familia in caminho.stem.lower().replace(" ", "")
+                    )
+                ),
+                0 if ("bold" in caminho.stem.lower() or "bd" in caminho.stem.lower()) == negrito else 1,
+            ),
+        )
+    )
+    return tuple(dict.fromkeys(caminhos))
+
+
+def _fonte_tem_glifos(fonte: ImageFont.FreeTypeFont) -> bool:
+    mascara_ausente = fonte.getmask("\U0010ffff")
+    glifo_ausente = Image.frombytes(
+        "L",
+        mascara_ausente.size,
+        bytes(mascara_ausente),
+    )
+    for caractere in _CARACTERES_NECESSARIOS:
+        mascara = fonte.getmask(caractere)
+        glifo = Image.frombytes("L", mascara.size, bytes(mascara))
+        if not mascara.getbbox() or glifo == glifo_ausente:
+            return False
+    return True
+
+
+def _fonte(tamanho: int, negrito: bool = False) -> ImageFont.FreeTypeFont:
+    for caminho in _caminhos_fontes(negrito):
+        try:
+            fonte = ImageFont.truetype(str(caminho), tamanho)
+        except OSError:
+            continue
+        if _fonte_tem_glifos(fonte):
+            return fonte
+
+    raise RuntimeError(
+        "Não foi encontrada uma fonte TrueType com suporte a acentos, cedilha e hífens "
+        "para gerar a imagem. Instale Arial, DejaVu Sans, Liberation Sans, Noto Sans "
+        "ou FreeSans no sistema."
+    )
 
 
 def _quebrar_linhas(

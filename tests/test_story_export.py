@@ -3,7 +3,13 @@ from io import BytesIO
 
 from PIL import Image
 
-from story_export import STORY_HEIGHT, STORY_WIDTH, criar_imagem_story
+from story_export import (
+    STORY_HEIGHT,
+    STORY_WIDTH,
+    _CARACTERES_NECESSARIOS,
+    _fonte,
+    criar_imagem_story,
+)
 
 
 class StoryExportTests(unittest.TestCase):
@@ -32,6 +38,27 @@ class StoryExportTests(unittest.TestCase):
     def test_rejeita_quantidade_incorreta_de_indicadores(self):
         with self.assertRaisesRegex(ValueError, "oito indicadores"):
             criar_imagem_story("Período A", "Período B", [])
+
+    def test_fonte_tem_glifos_para_diacriticos_e_hifens(self):
+        for negrito in (False, True):
+            fonte = _fonte(24, negrito=negrito)
+            glifo_ausente = fonte.getmask("\U0010ffff")
+            imagem_ausente = Image.frombytes(
+                "L",
+                glifo_ausente.size,
+                bytes(glifo_ausente),
+            )
+
+            for caractere in _CARACTERES_NECESSARIOS:
+                mascara = fonte.getmask(caractere)
+                imagem_glifo = Image.frombytes(
+                    "L",
+                    mascara.size,
+                    bytes(mascara),
+                )
+                with self.subTest(negrito=negrito, caractere=caractere):
+                    self.assertIsNotNone(mascara.getbbox())
+                    self.assertNotEqual(imagem_glifo, imagem_ausente)
 
 
 if __name__ == "__main__":
