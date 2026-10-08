@@ -7,6 +7,7 @@ from io import BytesIO
 from pathlib import Path
 from functools import lru_cache
 
+import font_roboto
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -26,6 +27,7 @@ _CARACTERES_NECESSARIOS = "áéíóúâêôãõçÁÉÍÓÚÂÊÔÃÕÇ–—-"
 def _caminhos_fontes(negrito: bool) -> tuple[Path, ...]:
     nomes = (
         (
+            font_roboto.RobotoBold,
             r"C:\Windows\Fonts\arialbd.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
@@ -35,6 +37,7 @@ def _caminhos_fontes(negrito: bool) -> tuple[Path, ...]:
         )
         if negrito
         else (
+            font_roboto.Roboto,
             r"C:\Windows\Fonts\arial.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
