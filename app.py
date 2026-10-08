@@ -17,6 +17,7 @@ import streamlit as st
 
 from csv_validation import ler_csv_limitado
 from political_analysis import analisar_posicionamento_voto
+from story_export import criar_imagem_story
 
 
 st.set_page_config(
@@ -700,6 +701,65 @@ if modo == "Comparar dois períodos":
             "Para desemprego, a base prioriza a PNAD Contínua a partir de 2012; "
             "não há média apresentada para 2003–2010. Rendimento e cobertura de "
             "transferências são observações pontuais e não séries anuais completas."
+        )
+        indicadores_story = [
+            (
+                "Crescimento médio do PIB (ao ano)",
+                formatar_grupo(primeiro, "pib", 2, "%"),
+                formatar_grupo(segundo, "pib", 2, "%"),
+            ),
+            (
+                "IPCA acumulado no período",
+                formatar_grupo(primeiro, "ipca", 2, "%", acumulado=True),
+                formatar_grupo(segundo, "ipca", 2, "%", acumulado=True),
+            ),
+            (
+                "Desocupação média anual",
+                formatar_grupo(primeiro, "desemprego", 1, "%"),
+                formatar_grupo(segundo, "desemprego", 1, "%"),
+            ),
+            (
+                "Desocupação no último ano disponível",
+                fmt_numero(ultimo_valor(primeiro["desemprego"]), 1, "%"),
+                fmt_numero(ultimo_valor(segundo["desemprego"]), 1, "%"),
+            ),
+            (
+                "Rendimento real mensal (último dado)",
+                fmt_numero(ultimo_valor(primeiro["renda_real_brl"]), 0, " R$"),
+                fmt_numero(ultimo_valor(segundo["renda_real_brl"]), 0, " R$"),
+            ),
+            (
+                "Famílias atendidas em transferência de renda (último dado)",
+                fmt_numero(ultimo_valor(primeiro["transferencias_milhoes"]), 1, " mi"),
+                fmt_numero(ultimo_valor(segundo["transferencias_milhoes"]), 1, " mi"),
+            ),
+            (
+                "IED médio anual",
+                formatar_grupo(primeiro, "ied_usd_bilhoes", 1, " US$ bi"),
+                formatar_grupo(segundo, "ied_usd_bilhoes", 1, " US$ bi"),
+            ),
+            (
+                "Resultado primário médio (% do PIB)",
+                formatar_grupo(primeiro, "resultado_primario_pct_pib", 2, "%"),
+                formatar_grupo(segundo, "resultado_primario_pct_pib", 2, "%"),
+            ),
+        ]
+        imagem_story = criar_imagem_story(
+            periodos_para_metricas[0],
+            periodos_para_metricas[1],
+            indicadores_story,
+        )
+        st.download_button(
+            "Baixar comparativo para Instagram Stories (PNG)",
+            data=imagem_story,
+            file_name="comparativo_governos_story.png",
+            mime="image/png",
+            help="Imagem vertical 1080 × 1920, com os oito indicadores e notas metodológicas.",
+            width="stretch",
+        )
+        st.caption(
+            "O PNG usa os dois períodos selecionados e todas as métricas do comparativo. "
+            "Dados indisponíveis aparecem como N/D."
         )
 else:
     st.subheader("Trajetória histórica")
