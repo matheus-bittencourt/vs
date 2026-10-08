@@ -9,8 +9,10 @@ pessoais a partir do voto. O projeto não é um canal oficial de candidatura ou 
 
 - Séries econômicas e sociais incorporadas ao projeto, com cobertura de 2003 a 2024.
 - Exemplos de propostas e seus status legislativos, com links para fontes públicas.
-- Votações nominais de Flávio Bolsonaro consultadas na API oficial do Senado, além
-  de suporte opcional a CSV documentado na própria aplicação.
+- Votações nominais de Flávio Bolsonaro consultadas na API oficial do Senado.
+- Dados mantidos por curadoria no repositório, com referências a fontes oficiais;
+  a aplicação não aceita arquivos para inserir ou substituir indicadores, propostas
+  ou votações.
 - Relatório que relaciona o voto Sim/Não à direção expressamente descrita para a
   medida votada: por exemplo, Sim em um item que propõe reduzir a maioridade penal
   é classificado como favorável à redução. Abstenção, obstrução e ausência não são
@@ -22,6 +24,9 @@ pessoais a partir do voto. O projeto não é um canal oficial de candidatura ou 
   Roboto é instalada pelas dependências do projeto para preservar acentos,
   cedilha e hífens também em ambientes de hospedagem sem fontes do sistema. Um
   checkbox permite incluir atribuições resumidas das fontes dos dados na imagem.
+- Formulário para sugerir melhorias. Com a integração configurada, cada envio
+  cria uma issue pública neste repositório; o formulário avisa sobre a publicação
+  e exige consentimento antes do envio. Não inclua dados pessoais ou privados.
 
 Os dados econômicos incorporados são aproximados e arredondados para exploração,
 não projeções oficiais. Programas de transferência de renda, séries e metodologias
@@ -59,9 +64,21 @@ Uma opção simples é o [Streamlit Community Cloud](https://share.streamlit.io/
 4. Acesse o endereço público fornecido e teste os links das fontes e a consulta ao
    Senado após a publicação.
 
-O site não precisa de segredos para iniciar. O limite de upload configurado é de
-5 MB, com validação adicional de tamanho e linhas no código. Os CSVs enviados são
-usados na sessão da aplicação e não são gravados pelo projeto em disco.
+O site funciona sem segredos, mas o formulário de ideias depende de um token do
+GitHub com permissão mínima para criar issues neste repositório:
+
+- **Streamlit Community Cloud:** adicione `GITHUB_TOKEN` em **App settings >
+  Secrets**.
+- **Execução local:** crie `.streamlit/secrets.toml` (já ignorado pelo Git) e
+  inclua `GITHUB_TOKEN = "seu-token"`; alternativamente, defina a variável de
+  ambiente `GITHUB_TOKEN`.
+
+Use um fine-grained personal access token limitado a este repositório e com
+permissão **Issues: Read and write**. Nunca inclua o token no código ou em arquivos
+versionados. Sem o token, o formulário permanece visível, mas não permite enviar.
+Não há upload de dados na aplicação. Atualizações do catálogo devem ser feitas no
+repositório, após conferência em fontes oficiais, mantendo os links de origem e as
+notas metodológicas junto aos dados.
 
 ## Testes
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 from datetime import date
 from typing import Any
@@ -14,8 +15,9 @@ from urllib.request import Request, urlopen
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
 
-from csv_validation import ler_csv_limitado
+from idea_submission import IdeaSubmissionError, create_idea_issue
 from political_analysis import analisar_posicionamento_voto
 from story_export import criar_imagem_story
 
@@ -32,8 +34,8 @@ CORES = {
     "Contexto PT (Dilma)": "#D97706",
 }
 
-# Séries anuais arredondadas para apresentação. Na ausência de CSV externo,
-# esta base embarcada mantém o dashboard utilizável e declara suas lacunas.
+# Séries anuais arredondadas para apresentação, curadas a partir das fontes oficiais
+# indicadas na metodologia. Lacunas permanecem explícitas; não são preenchidas por upload.
 DADOS_BASE = [
     {"ano": 2003, "periodo": "Lula I e II", "grupo": "Lula / PT", "pib": 1.1, "ipca": 9.30, "desemprego": None, "renda_real_brl": None, "transferencias_milhoes": None, "ied_usd_bilhoes": 10.1, "resultado_primario_pct_pib": 3.2},
     {"ano": 2004, "periodo": "Lula I e II", "grupo": "Lula / PT", "pib": 5.8, "ipca": 7.60, "desemprego": None, "renda_real_brl": None, "transferencias_milhoes": None, "ied_usd_bilhoes": 18.2, "resultado_primario_pct_pib": 3.7},
@@ -55,19 +57,6 @@ DADOS_BASE = [
     {"ano": 2022, "periodo": "Bolsonaro", "grupo": "Bolsonaro / Flávio", "pib": 3.0, "ipca": 5.79, "desemprego": 9.3, "renda_real_brl": 2659, "transferencias_milhoes": 21.6, "ied_usd_bilhoes": 74.6, "resultado_primario_pct_pib": 1.3},
     {"ano": 2023, "periodo": "Lula III", "grupo": "Lula / PT", "pib": 3.2, "ipca": 4.62, "desemprego": 7.8, "renda_real_brl": 3032, "transferencias_milhoes": None, "ied_usd_bilhoes": 64.2, "resultado_primario_pct_pib": -2.3},
     {"ano": 2024, "periodo": "Lula III", "grupo": "Lula / PT", "pib": 3.4, "ipca": 4.83, "desemprego": 6.6, "renda_real_brl": 3225, "transferencias_milhoes": 20.8, "ied_usd_bilhoes": 71.1, "resultado_primario_pct_pib": -0.4},
-]
-
-COLUNAS_CSV = [
-    "ano",
-    "periodo",
-    "grupo",
-    "pib",
-    "ipca",
-    "desemprego",
-    "renda_real_brl",
-    "transferencias_milhoes",
-    "ied_usd_bilhoes",
-    "resultado_primario_pct_pib",
 ]
 
 EIXOS = {
@@ -94,17 +83,6 @@ PERIODOS = {
     "Lula 2023–2024 (parcial)": ("Lula III",),
 }
 
-COLUNAS_PROPOSTAS = [
-    "bloco",
-    "proposta",
-    "ano",
-    "iniciativa",
-    "autor_iniciativa",
-    "status",
-    "aprovada",
-    "fonte_url",
-]
-
 COLUNAS_VOTOS = [
     "agente",
     "casa",
@@ -118,19 +96,6 @@ COLUNAS_VOTOS = [
     "voto",
     "fonte_url",
 ]
-
-VOTOS_POSSIVEIS = {"Sim", "Não", "Abstenção", "Obstrução", "Sem voto registrado"}
-PARTICIPACOES_POSSIVEIS = {
-    "Votou",
-    "Presente, sem voto nominal",
-    "Ausente",
-    "Licença registrada",
-    "Em missão oficial",
-    "Atividade parlamentar registrada; sem voto nominal",
-    "Presidiu a sessão",
-    "Participou de votação secreta",
-    "Sem informação",
-}
 
 SENADO_CODIGO_FLAVIO = 5894
 
@@ -158,152 +123,6 @@ PROPOSTAS_BASE = [
         "fonte_url": "https://www.camara.leg.br/busca-portal/proposicoes/?q=MPV%201164%2F2023",
     },
 ]
-
-
-def ler_csv_upload(arquivo: Any) -> pd.DataFrame:
-    """Lê e valida CSV no esquema documentado no painel."""
-    dados = ler_csv_limitado(arquivo, 50_000)
-    faltantes = sorted(set(COLUNAS_CSV) - set(dados.columns))
-    if faltantes:
-        raise ValueError(f"Colunas ausentes no CSV: {', '.join(faltantes)}.")
-    dados = dados[COLUNAS_CSV].copy()
-    for coluna in COLUNAS_CSV:
-        if coluna not in ("periodo", "grupo"):
-            originais = dados[coluna]
-            dados[coluna] = pd.to_numeric(originais, errors="coerce")
-            invalidos = originais.notna() & dados[coluna].isna()
-            if invalidos.any():
-                raise ValueError(f"A coluna '{coluna}' contém valores que não são numéricos.")
-    if dados["ano"].isna().any():
-        raise ValueError("A coluna 'ano' não pode conter valores vazios.")
-    grupos_validos = set(CORES)
-    grupos_invalidos = sorted(set(dados["grupo"].dropna()) - grupos_validos)
-    if grupos_invalidos:
-        raise ValueError(
-            "Valores de 'grupo' não reconhecidos: "
-            f"{', '.join(map(str, grupos_invalidos))}. Use: {', '.join(grupos_validos)}."
-        )
-    return dados.sort_values("ano")
-
-
-def ler_csv_propostas(arquivo: Any) -> pd.DataFrame:
-    """Valida catálogo de propostas fornecido pelo usuário."""
-    propostas = ler_csv_limitado(arquivo, 10_000)
-    faltantes = sorted(set(COLUNAS_PROPOSTAS) - set(propostas.columns))
-    if faltantes:
-        raise ValueError(f"Colunas ausentes: {', '.join(faltantes)}.")
-
-    propostas = propostas[COLUNAS_PROPOSTAS].copy()
-    propostas["ano"] = pd.to_numeric(propostas["ano"], errors="coerce")
-    if propostas["ano"].isna().any():
-        raise ValueError("A coluna 'ano' precisa conter anos numéricos.")
-    if propostas.isna().any().any():
-        raise ValueError("O CSV de propostas não pode conter campos vazios.")
-
-    bloco_validos = {"Lula / PT", "Flávio Bolsonaro"}
-    invalidos = sorted(set(propostas["bloco"].dropna()) - bloco_validos)
-    if invalidos:
-        raise ValueError(
-            f"Bloco(s) não reconhecido(s): {', '.join(invalidos)}. "
-            f"Use: {', '.join(sorted(bloco_validos))}."
-        )
-
-    def normalizar_aprovada(valor: Any) -> bool:
-        if isinstance(valor, bool):
-            return valor
-        texto = str(valor).strip().casefold()
-        if texto in {"true", "1", "sim", "aprovada", "aprovado"}:
-            return True
-        if texto in {"false", "0", "não", "nao", "rejeitada", "rejeitado", "em tramitação"}:
-            return False
-        raise ValueError(
-            "A coluna 'aprovada' deve ser sim/não, true/false ou 1/0."
-        )
-
-    propostas["aprovada"] = propostas["aprovada"].map(normalizar_aprovada)
-    for coluna in ("proposta", "iniciativa", "autor_iniciativa", "status", "fonte_url"):
-        if propostas[coluna].isna().any() or propostas[coluna].astype(str).str.strip().eq("").any():
-            raise ValueError(f"A coluna '{coluna}' não pode ficar vazia.")
-    if not propostas["fonte_url"].astype(str).str.startswith(("https://", "http://")).all():
-        raise ValueError("A coluna 'fonte_url' deve conter links HTTP ou HTTPS.")
-
-    return propostas
-
-
-def ler_csv_votos(arquivo: Any) -> pd.DataFrame:
-    """Valida votos nominais e participação para o catálogo carregado pelo usuário."""
-    votos = ler_csv_limitado(arquivo, 10_000)
-    faltantes = sorted(set(COLUNAS_VOTOS) - set(votos.columns))
-    if faltantes:
-        raise ValueError(f"Colunas ausentes: {', '.join(faltantes)}.")
-
-    colunas_opcionais = ["descricao_votacao"] if "descricao_votacao" in votos else []
-    votos = votos[COLUNAS_VOTOS + colunas_opcionais].copy()
-    if votos[COLUNAS_VOTOS].isna().any().any():
-        raise ValueError("O CSV de votações não pode conter campos vazios.")
-    if "descricao_votacao" in votos:
-        votos["descricao_votacao"] = votos["descricao_votacao"].fillna("").astype(str).str.strip()
-
-    campos_texto = [
-        "agente",
-        "casa",
-        "cargo",
-        "sessao",
-        "id_votacao",
-        "proposicao",
-        "objetivo_impacto",
-        "participacao",
-        "voto",
-        "fonte_url",
-    ]
-    for coluna in campos_texto:
-        votos[coluna] = votos[coluna].astype(str).str.strip()
-        if votos[coluna].eq("").any():
-            raise ValueError(f"A coluna '{coluna}' não pode ficar vazia.")
-
-    votos["data"] = pd.to_datetime(votos["data"], errors="coerce", dayfirst=True)
-    if votos["data"].isna().any():
-        raise ValueError("A coluna 'data' precisa conter datas válidas.")
-
-    regras_cargo = {
-        "Luiz Inácio Lula da Silva": {
-            ("Câmara dos Deputados", "Deputado federal")
-        },
-        "Flávio Bolsonaro": {("Senado Federal", "Senador")},
-    }
-    for linha in votos.itertuples(index=False):
-        if (linha.casa, linha.cargo) not in regras_cargo.get(linha.agente, set()):
-            raise ValueError(
-                f"Casa/cargo incompatível com '{linha.agente}'. "
-                "Lula: Câmara dos Deputados + Deputado federal; "
-                "Flávio Bolsonaro: Senado Federal + Senador."
-            )
-
-    casas_validas = {"Câmara dos Deputados", "Senado Federal"}
-    if not votos["casa"].isin(casas_validas).all():
-        raise ValueError(f"Use casa: {', '.join(sorted(casas_validas))}.")
-    if not votos["voto"].isin(VOTOS_POSSIVEIS).all():
-        raise ValueError(f"Valores de voto aceitos: {', '.join(sorted(VOTOS_POSSIVEIS))}.")
-    if not votos["participacao"].isin(PARTICIPACOES_POSSIVEIS).all():
-        raise ValueError(
-            "Valores de participação aceitos: "
-            f"{', '.join(sorted(PARTICIPACOES_POSSIVEIS))}."
-        )
-
-    votou = votos["participacao"].eq("Votou")
-    if (votou & votos["voto"].eq("Sem voto registrado")).any():
-        raise ValueError("Registros marcados como 'Votou' precisam indicar o sentido do voto.")
-    if (~votou & ~votos["voto"].eq("Sem voto registrado")).any():
-        raise ValueError(
-            "Para quem não tem voto nominal registrado, use 'Sem voto registrado' "
-            "na coluna 'voto'."
-        )
-    if not votos["fonte_url"].str.startswith(("https://", "http://")).all():
-        raise ValueError("A coluna 'fonte_url' deve conter links HTTP ou HTTPS.")
-
-    return votos.drop_duplicates(
-        subset=["agente", "casa", "id_votacao"], keep="last"
-    ).sort_values("data")
 
 
 def resumir_objetivo_popular(proposicao: str, ementa: str) -> str:
@@ -621,8 +440,68 @@ st.info(
     "independentemente dos indicadores."
 )
 
+
+def token_github_issues() -> str | None:
+    token = os.getenv("GITHUB_TOKEN")
+    if token:
+        return token
+    try:
+        token_secrets = st.secrets["GITHUB_TOKEN"]
+    except (KeyError, StreamlitSecretNotFoundError):
+        return None
+    return str(token_secrets).strip() or None
+
+
+@st.dialog("Enviar uma ideia")
+def dialogo_ideia() -> None:
+    token = token_github_issues()
+    st.warning(
+        "A sugestão será publicada como uma issue pública no GitHub. "
+        "Não inclua dados pessoais ou informações privadas."
+    )
+    if not token:
+        st.error(
+            "O envio está temporariamente indisponível: falta configurar "
+            "GITHUB_TOKEN no ambiente do aplicativo."
+        )
+
+    with st.form("formulario_ideia"):
+        ideia = st.text_area(
+            "Qual ideia você gostaria de sugerir?",
+            max_chars=10_000,
+            height=180,
+            placeholder="Descreva uma melhoria, correção ou novo indicador...",
+        )
+        consentimento = st.checkbox(
+            "Entendo que o texto será publicado publicamente em uma issue do GitHub."
+        )
+        enviar = st.form_submit_button(
+            "Publicar sugestão",
+            type="primary",
+            disabled=not token,
+        )
+
+    if enviar:
+        if not consentimento:
+            st.error("Confirme a publicação pública para enviar a sugestão.")
+            return
+        try:
+            numero, url = create_idea_issue(ideia, token)
+        except ValueError as error:
+            st.error(str(error))
+            return
+        except IdeaSubmissionError as error:
+            st.error(str(error))
+            return
+
+        st.success(f"Sugestão publicada como issue #{numero}.")
+        st.link_button("Abrir a issue pública", url)
+
+
 with st.sidebar:
     st.header("Configuração da comparação")
+    if st.button("💡 Enviar uma ideia", use_container_width=True):
+        dialogo_ideia()
     modo = st.radio(
         "Visualização",
         ["Comparar dois períodos", "Ver trajetória histórica"],
@@ -635,28 +514,18 @@ with st.sidebar:
         max_selections=2,
     )
     eixo = st.selectbox("Eixo temático", list(EIXOS))
-    upload = st.file_uploader(
-        "Opcional: carregar CSV próprio",
-        type=["csv"],
-        help="O arquivo precisa conter as colunas descritas na seção 'Dados e metodologia'.",
-    )
 
     st.markdown("**Blocos incluídos**")
     st.markdown("- Lula / PT: mandatos de Lula.")
     st.markdown("- Contexto PT: governo Dilma (2011–2016), separado de Lula.")
     st.markdown("- Bolsonaro / Flávio: dados de governo são do mandato de Jair Bolsonaro; "
                 "Flávio não exerceu a Presidência.")
+    st.caption(
+        "Os dados são mantidos pela curadoria do projeto com base em fontes oficiais; "
+        "não é possível carregar arquivos para alterar o painel."
+    )
 
-if upload is not None:
-    try:
-        dados = ler_csv_upload(upload)
-        st.sidebar.success("CSV carregado e validado.")
-    except (ValueError, pd.errors.ParserError, UnicodeError) as erro:
-        st.sidebar.error(f"Não foi possível usar o CSV: {erro}")
-        dados = pd.DataFrame(DADOS_BASE)
-        st.sidebar.info("O painel está usando a base embarcada.")
-else:
-    dados = pd.DataFrame(DADOS_BASE)
+dados = pd.DataFrame(DADOS_BASE)
 
 if modo == "Comparar dois períodos":
     if len(periodos_escolhidos) != 2:
@@ -903,38 +772,7 @@ st.markdown(
     """
 )
 
-modelo_propostas = (
-    "bloco,proposta,ano,iniciativa,autor_iniciativa,status,aprovada,fonte_url\n"
-    'Flávio Bolsonaro,"Título e número do projeto",2023,PL,'
-    '"Flávio Bolsonaro (autor)",Em tramitação,não,https://www25.senado.leg.br/web/atividade/materias\n'
-)
-st.download_button(
-    "Baixar modelo CSV de propostas",
-    data=modelo_propostas,
-    file_name="modelo_propostas.csv",
-    mime="text/csv",
-)
-arquivo_propostas = st.file_uploader(
-    "Adicionar projetos e propostas rastreados em fontes oficiais",
-    type=["csv"],
-    help=(
-        "O CSV deve ter: bloco, proposta, ano, iniciativa, autor_iniciativa, "
-        "status, aprovada e fonte_url. Use bloco 'Lula / PT' ou 'Flávio Bolsonaro'."
-    ),
-    key="propostas_csv",
-)
-
 propostas = pd.DataFrame(PROPOSTAS_BASE)
-if arquivo_propostas is not None:
-    try:
-        propostas_usuario = ler_csv_propostas(arquivo_propostas)
-        propostas = pd.concat([propostas, propostas_usuario], ignore_index=True)
-        propostas = propostas.drop_duplicates(
-            subset=["bloco", "proposta", "ano"], keep="last"
-        )
-        st.success("Propostas do CSV foram validadas e adicionadas aos exemplos.")
-    except (ValueError, pd.errors.ParserError, UnicodeError) as erro:
-        st.error(f"Não foi possível carregar as propostas: {erro}")
 
 contagem = (
     propostas.groupby("bloco", as_index=False)
@@ -961,14 +799,15 @@ for coluna, bloco in zip(metricas_propostas, ("Lula / PT", "Flávio Bolsonaro"))
 
 if flavio_sem_dados:
     st.info(
-        "Ainda não há projetos de autoria de Flávio cadastrados no catálogo local. "
+        "Ainda não há projetos de autoria de Flávio cadastrados no catálogo curado. "
         "Isso significa 'sem dado no catálogo', não zero projetos ou zero aprovações. "
-        "Consulte a busca oficial do Senado ou carregue um CSV documentado."
+        "Consulte a busca oficial do Senado; novos registros serão incluídos após "
+        "conferência da fonte primária."
     )
 else:
     st.caption(
-        "A contagem é do catálogo demonstrativo mais os registros enviados pelo usuário; "
-        "não equivale à totalidade das proposições apresentadas por cada agente."
+        "A contagem é do catálogo curado e documentado com fontes oficiais; não equivale "
+        "à totalidade das proposições apresentadas por cada agente."
     )
 
 if not contagem.empty:
@@ -1058,26 +897,6 @@ st.markdown(
     """
 )
 
-modelo_votos = (
-    "agente,casa,cargo,data,sessao,id_votacao,proposicao,objetivo_impacto,participacao,voto,fonte_url,descricao_votacao\n"
-)
-st.download_button(
-    "Baixar modelo CSV de votações",
-    data=modelo_votos,
-    file_name="modelo_votacoes.csv",
-    mime="text/csv",
-)
-arquivo_votos = st.file_uploader(
-    "Carregar registros nominais com fonte oficial",
-    type=["csv"],
-    help=(
-        "O CSV exige: agente, casa, cargo, data, sessao, id_votacao, proposicao, "
-        "objetivo_impacto, participacao, voto e fonte_url. "
-        "descricao_votacao é opcional e identifica o item específico submetido à votação."
-    ),
-    key="votos_csv",
-)
-
 try:
     votos_api = buscar_votos_senado_flavio()
     st.session_state["votos_senado_ultimo_sucesso"] = votos_api.copy()
@@ -1101,21 +920,10 @@ except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, ValueError) as 
     else:
         st.warning(
             "Não foi possível consultar a API do Senado agora. "
-            f"Detalhe: {erro}. Você ainda pode carregar um CSV manualmente."
+            f"Detalhe: {erro}. Nenhum dado alternativo foi carregado."
         )
 
 votos = votos_api.copy()
-if arquivo_votos is not None:
-    try:
-        votos_csv = ler_csv_votos(arquivo_votos)
-        votos_csv["id_votacao"] = votos_csv["id_votacao"].astype(str)
-        votos = pd.concat([votos, votos_csv], ignore_index=True, sort=False)
-        votos = votos.drop_duplicates(
-            subset=["agente", "casa", "id_votacao"], keep="last"
-        ).sort_values("data")
-        st.success(f"{len(votos_csv)} registro(s) manual(is) validado(s) e incluído(s).")
-    except (ValueError, pd.errors.ParserError, UnicodeError) as erro:
-        st.error(f"Não foi possível carregar os votos: {erro}")
 
 if not votos.empty:
     for coluna in ("codigo_voto_api", "detalhe_voto_api", "descricao_votacao"):
@@ -1151,9 +959,9 @@ if not votos.empty:
 
 if votos.empty:
     st.info(
-        "A consulta não retornou votos nem há CSV manual carregado. Se a API estiver "
-        "indisponível, tente atualizar mais tarde ou carregue registros conferidos "
-        "no CSV; a falta de registro não é tratada como voto ou ausência."
+        "A consulta oficial não retornou votos disponíveis. Se a API estiver "
+        "indisponível, tente novamente mais tarde; a falta de registro não é tratada "
+        "como voto ou ausência."
     )
 else:
     filtro_colunas = st.columns(3)
@@ -1399,11 +1207,11 @@ st.caption(
 with st.expander("Dados, fontes e metodologia"):
     st.markdown(
         """
-        A base padrão é uma seleção **aproximada e arredondada**, incluída no próprio
-        `app.py` para o app funcionar sem arquivos externos. A cobertura embarcada vai
-        de 2003 a 2024; 2025 e 2026 não são preenchidos por projeções. Para uma
-        atualização de 2025–2026, carregue um CSV revisado com fontes e datas de
-        extração documentadas.
+        A base é uma seleção **curada, aproximada e arredondada**, mantida no
+        repositório a partir das fontes oficiais listadas abaixo. A cobertura vai de
+        2003 a 2024; 2025 e 2026 não são preenchidos por projeções. Não há upload de
+        dados: novas observações só são incorporadas após conferência na fonte
+        primária, com referência e metodologia registradas no código.
 
         - **PIB e IPCA:** IBGE; taxas anuais de variação.
         - **Desocupação e rendimento:** IBGE/PNAD Contínua; a série de desemprego
@@ -1445,11 +1253,6 @@ with st.expander("Dados, fontes e metodologia"):
         e [Lei 14.601/2023](https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2023/lei/l14601.htm).
         Confira as páginas oficiais antes de republicar os dados ou atribuir autoria.
 
-        **CSV esperado:** `ano, periodo, grupo, pib, ipca, desemprego, renda_real_brl,
-        transferencias_milhoes, ied_usd_bilhoes, resultado_primario_pct_pib`.
-        Valores ausentes devem ficar vazios. Valores de `grupo` aceitos:
-        `Lula / PT`, `Bolsonaro / Flávio` e `Contexto PT (Dilma)`. Se houver erro no
-        arquivo, o painel informa o motivo e retorna à base embarcada.
         """
     )
 

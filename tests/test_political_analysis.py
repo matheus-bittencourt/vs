@@ -1,7 +1,5 @@
-from io import BytesIO
 import unittest
 
-from csv_validation import ler_csv_limitado
 from political_analysis import analisar_posicionamento_voto
 
 
@@ -84,28 +82,6 @@ class AnaliseVotoTests(unittest.TestCase):
         self.assertEqual(tema, "Não classificado")
         self.assertIn("Não há voto nominal", leitura)
         self.assertEqual(posicao, "Não classificado")
-
-
-class LimitesCsvTests(unittest.TestCase):
-    def test_aceita_csv_ate_o_limite_de_linhas(self):
-        arquivo = BytesIO(b"coluna\n1\n2\n")
-
-        dados = ler_csv_limitado(arquivo, 2)
-
-        self.assertEqual(len(dados), 2)
-
-    def test_rejeita_csv_acima_do_limite_de_linhas(self):
-        arquivo = BytesIO(b"coluna\n1\n2\n")
-
-        with self.assertRaisesRegex(ValueError, "linhas de dados"):
-            ler_csv_limitado(arquivo, 1)
-
-    def test_rejeita_csv_acima_do_limite_de_tamanho(self):
-        arquivo = BytesIO(b"x" * (5 * 1024 * 1024 + 1))
-
-        with self.assertRaisesRegex(ValueError, "5 MB"):
-            ler_csv_limitado(arquivo, 1)
-
 
 if __name__ == "__main__":
     unittest.main()
